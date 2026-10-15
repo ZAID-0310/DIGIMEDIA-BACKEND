@@ -38,6 +38,7 @@ return [
     'whatsapp' => [
         'url' => env('WHATSAPP_API_URL'),
         'api_key' => env('WHATSAPP_SERVICE_API_KEY'),
+        'test_number' => env('WHATSAPP_TEST_NUMBER'),
     ],
 
     'turnstile' => [

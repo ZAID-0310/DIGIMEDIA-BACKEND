@@ -137,10 +137,13 @@ class WhatsAppCampaignService
 
         $id_servicio = self::SERVICE_MAP[$serviceCode];
         $destinatarios = $this->getDestinatarios($id_servicio);
+        $testNumber = config('services.whatsapp.test_number') ?: env('WHATSAPP_TEST_NUMBER');
 
         return [
             'service' => $serviceCode,
             'total_destinatarios' => $destinatarios->count(),
+            'is_sandbox' => !empty($testNumber),
+            'test_number' => !empty($testNumber) ? $testNumber : null,
         ];
     }
 
@@ -245,6 +248,29 @@ class WhatsAppCampaignService
 
     private function getDestinatarios(int $id_servicio): Collection
     {
+        $testNumber = config('services.whatsapp.test_number') ?: env('WHATSAPP_TEST_NUMBER');
+
+        if (!empty($testNumber)) {
+            // Modo Sandbox / Prueba: usamos el primer lead para conservar integridad relacional (FK)
+            $lead = modalservicios::where('id_servicio', $id_servicio)
+                ->where('estado', 1)
+                ->orderBy('id_modalservicio')
+                ->first();
+
+            if (!$lead) {
+                $lead = modalservicios::where('estado', 1)->first() ?? modalservicios::first();
+            }
+
+            if ($lead) {
+                $testLead = clone $lead;
+                $testLead->telefono = $testNumber;
+                $testLead->nombre = $lead->nombre . ' (Prueba Sandbox)';
+
+                Log::info("Modo Sandbox WhatsApp activo: Campaña dirigida únicamente al número de prueba: {$testNumber}");
+                return collect([$testLead]);
+            }
+        }
+
         return modalservicios::where('id_servicio', $id_servicio)
             ->where('estado', 1) // Solo activos
             ->whereNotNull('telefono')

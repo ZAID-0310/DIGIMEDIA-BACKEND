@@ -206,14 +206,43 @@ class SendWhatsAppCampaignJob implements ShouldQueue
             }
 
             // --- Preparar payload para UN solo destinatario ---
+            $testNumber = config('services.whatsapp.test_number') ?: env('WHATSAPP_TEST_NUMBER');
+            if (!empty($testNumber) && $posicion > 0) {
+                // En modo Sandbox, si la campaña proviene de datos anteriores con múltiples contactos,
+                // enviamos el primer mensaje al número de prueba y los demás se simulan para evitar spam
+                Log::info("Modo Sandbox: Omitiendo envío repetido al teléfono de prueba para destinatario #{$destinatario['id_modalservicio']}");
+                $this->campania->increment('envios_exitosos');
+                $this->campania->decrement('envios_pendientes');
+                $this->campania->increment('envios_hoy');
+                $this->campania->update([
+                    'fecha_ultimo_envio' => now()->timezone('America/Lima')->toDateString()
+                ]);
+
+                WatModal::create([
+                    'id_modalservicio' => $destinatario['id_modalservicio'],
+                    'number_message'   => 1,
+                    'estado'           => 1,
+                    'error'            => 'Simulado (Modo Sandbox)',
+                    'fecha'            => now(),
+                    'campania_id'      => $this->campania->id_campania,
+                    'intentos'         => 1,
+                    'puede_reintentar' => false,
+                ]);
+                continue;
+            }
+
+            $telefonoDestino = !empty($testNumber)
+                ? formatearTelefonoWhatsApp($testNumber)
+                : formatearTelefonoWhatsApp($destinatario['telefono']);
+
             $payload = [
                 'campania_id'  => $this->campania->id_campania,
                 'chunk_number' => $chunkNumber,
                 'recipients'   => [
                     [
                         'id_modalservicio' => $destinatario['id_modalservicio'],
-                        'nombre'           => $destinatario['nombre'],
-                        'telefono'         => formatearTelefonoWhatsApp($destinatario['telefono']),
+                        'nombre'           => $destinatario['nombre'] . (!empty($testNumber) ? ' (Sandbox)' : ''),
+                        'telefono'         => $telefonoDestino,
                     ]
                 ],
                 'message'      => $this->campania->parrafo,
@@ -443,12 +472,16 @@ class SendWhatsAppCampaignJob implements ShouldQueue
                 }
 
                 // Preparar destinatarios para reintento
-                $recipients = $retryChunk->map(function ($watModal) {
+                $testNumberRetry = config('services.whatsapp.test_number') ?: env('WHATSAPP_TEST_NUMBER');
+                $recipients = $retryChunk->map(function ($watModal) use ($testNumberRetry) {
                     $modalServicio = $watModal->modalServicio;
+                    $tel = !empty($testNumberRetry)
+                        ? formatearTelefonoWhatsApp($testNumberRetry)
+                        : formatearTelefonoWhatsApp($modalServicio->telefono);
                     return [
                         'id_modalservicio' => $modalServicio->id_modalservicio,
-                        'nombre' => $modalServicio->nombre,
-                        'telefono' => formatearTelefonoWhatsApp($modalServicio->telefono),
+                        'nombre' => $modalServicio->nombre . (!empty($testNumberRetry) ? ' (Sandbox)' : ''),
+                        'telefono' => $tel,
                         'wat_modal_id' => $watModal->id_modal_wat, // Para actualizar después
                     ];
                 })->toArray();

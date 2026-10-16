@@ -23,7 +23,7 @@ class SendWhatsAppCampaignJob implements ShouldQueue
 
     public $campania;
     public $destinatarios;
-    public $tries = 3;
+    public $tries = 1; // Un solo intento para evitar que Laravel reintente toda la lista masiva si ocurre un error
     public $timeout = 3600; // 1 hora: procesamiento individual (~45s × 20 destinatarios × chunks + reintentos)
 
     /**
@@ -50,6 +50,12 @@ class SendWhatsAppCampaignJob implements ShouldQueue
 
             // Resetear contador diario si es un nuevo día
             $this->campania->resetDailyCounterIfNeeded();
+
+            $this->campania->refresh();
+            if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+                Log::info("Job SendWhatsAppCampaignJob abortado para campaña #{$this->campania->id_campania} por estado: {$this->campania->estado}");
+                return;
+            }
 
             // Actualizar estado de la campaña
             $this->campania->update(['estado' => 'en_proceso']);
@@ -120,11 +126,12 @@ class SendWhatsAppCampaignJob implements ShouldQueue
 
                 $this->processChunk($chunkedRecipients, $chunkNumber);
 
-                // Verificar si la campaña fue pausada por desconexión durante el processChunk
+                // Verificar si la campaña fue pausada o cancelada durante el processChunk
                 $this->campania->refresh();
-                if ($this->campania->estado === 'pausada_sin_conexion') {
-                    Log::info('Campaña pausada por desconexión - deteniendo procesamiento de chunks restantes', [
+                if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+                    Log::info('Campaña detenida o pausada - deteniendo procesamiento de chunks restantes', [
                         'campania_id' => $this->campania->id_campania,
+                        'estado' => $this->campania->estado,
                         'chunks_restantes' => $totalChunks - $chunkNumber
                     ]);
                     break; // Salir del loop de chunks
@@ -137,10 +144,10 @@ class SendWhatsAppCampaignJob implements ShouldQueue
             }
 
             // 🔁 FASE 3: Procesar reintentos para mensajes fallidos
-            // NO procesar reintentos si la campaña fue pausada
+            // NO procesar reintentos si la campaña fue pausada o cancelada
             $this->campania->refresh();
-            if (in_array($this->campania->estado, ['pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
-                Log::info('Campaña pausada - omitiendo procesamiento de reintentos', [
+            if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+                Log::info('Campaña pausada o cancelada - omitiendo procesamiento de reintentos', [
                     'campania_id' => $this->campania->id_campania,
                     'estado' => $this->campania->estado
                 ]);
@@ -187,12 +194,23 @@ class SendWhatsAppCampaignJob implements ShouldQueue
         foreach ($chunk as $posicion => $destinatario) {
             // --- Verificar conexión / estado antes de cada mensaje ---
             $this->campania->refresh();
-            if ($this->campania->estado === 'pausada_sin_conexion') {
-                Log::info("Campaña pausada por desconexión - deteniendo envíos restantes en chunk", [
+            if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+                Log::info("Campaña detenida por estado ({$this->campania->estado}) - deteniendo envíos restantes en chunk", [
                     'campania_id'      => $this->campania->id_campania,
                     'pendientes_chunk' => $totalEnChunk - $posicion,
                 ]);
                 return;
+            }
+
+            // IDEMPOTENCIA: Verificar si ya se envió exitosamente a este destinatario en esta campaña
+            $yaEnviado = WatModal::where('campania_id', $this->campania->id_campania)
+                ->where('id_modalservicio', $destinatario['id_modalservicio'])
+                ->where('estado', 1)
+                ->exists();
+
+            if ($yaEnviado) {
+                Log::info("Destinatario #{$destinatario['id_modalservicio']} ya recibió mensaje en campaña #{$this->campania->id_campania}, omitiendo duplicado.");
+                continue;
             }
 
             // Verificar límite diario por cada mensaje
@@ -281,11 +299,15 @@ class SendWhatsAppCampaignJob implements ShouldQueue
                     // ✅ Actualizar BD inmediatamente tras cada mensaje
                     if ($exitoso) {
                         $this->campania->increment('envios_exitosos');
-                        $this->campania->decrement('envios_pendientes');
+                        if ($this->campania->envios_pendientes > 0) {
+                            $this->campania->decrement('envios_pendientes');
+                        }
                         $this->campania->increment('envios_hoy');
                     } else {
                         $this->campania->increment('envios_fallidos');
-                        $this->campania->decrement('envios_pendientes');
+                        if ($this->campania->envios_pendientes > 0) {
+                            $this->campania->decrement('envios_pendientes');
+                        }
                         $this->campania->increment('envios_hoy');
                     }
                     $this->campania->update([
@@ -360,7 +382,9 @@ class SendWhatsAppCampaignJob implements ShouldQueue
 
                     // Otro error: registrar como fallido y continuar con el siguiente
                     $this->campania->increment('envios_fallidos');
-                    $this->campania->decrement('envios_pendientes');
+                    if ($this->campania->envios_pendientes > 0) {
+                        $this->campania->decrement('envios_pendientes');
+                    }
                     $this->campania->increment('envios_hoy');
 
                     WatModal::create([
@@ -458,8 +482,16 @@ class SendWhatsAppCampaignJob implements ShouldQueue
             $retryChunks = $fallidosPendientes->chunk(20);
 
             foreach ($retryChunks as $chunkIndex => $retryChunk) {
-                // Verificar límite diario
+                // Verificar estado de campaña antes de procesar reintentos
                 $this->campania->refresh();
+                if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+                    Log::info("Reintentos abortados por estado de campaña ({$this->campania->estado})", [
+                        'campania_id' => $this->campania->id_campania
+                    ]);
+                    return;
+                }
+
+                // Verificar límite diario
                 $remainingQuota = $this->campania->getRemainingDailyQuota();
 
                 if ($remainingQuota <= 0) {

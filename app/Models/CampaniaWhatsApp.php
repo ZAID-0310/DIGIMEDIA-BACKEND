@@ -92,8 +92,8 @@ class CampaniaWhatsApp extends Model
         // Refresh para obtener datos actualizados
         $this->refresh();
 
-        // Si ya está en un estado pausado, no cambiar (el Cron Job se encargará)
-        if (in_array($this->estado, ['pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+        // Si ya está en un estado final o pausado, no sobreescribir
+        if (in_array($this->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
             return;
         }
 
@@ -162,7 +162,7 @@ class CampaniaWhatsApp extends Model
      */
     public static function hasActiveCampaign(): bool
     {
-        return self::whereIn('estado', ['en_proceso', 'pausada_hasta_mañana'])
+        return self::whereIn('estado', ['en_proceso', 'pendiente', 'pausada', 'pausada_hasta_mañana', 'pausada_fuera_horario', 'pausada_sin_conexion'])
             ->exists();
     }
 
@@ -171,7 +171,7 @@ class CampaniaWhatsApp extends Model
      */
     public static function getActiveCampaign(): ?self
     {
-        return self::whereIn('estado', ['en_proceso', 'pausada_hasta_mañana'])
+        return self::whereIn('estado', ['en_proceso', 'pendiente', 'pausada', 'pausada_hasta_mañana', 'pausada_fuera_horario', 'pausada_sin_conexion'])
             ->orderBy('created_at', 'asc') // FIFO: primera que se creó
             ->first();
     }
@@ -181,8 +181,8 @@ class CampaniaWhatsApp extends Model
      */
     public function canBeStarted(): bool
     {
-        // Solo campañas en borrador o pausadas pueden iniciarse
-        if (!in_array($this->estado, ['borrador', 'pausada_hasta_mañana'])) {
+        // Solo campañas en borrador pueden iniciarse como nuevas
+        if (!in_array($this->estado, ['borrador'])) {
             return false;
         }
 
@@ -193,6 +193,30 @@ class CampaniaWhatsApp extends Model
         }
 
         return true;
+    }
+
+    /**
+     * Verifica si esta campaña puede ser pausada manualmente
+     */
+    public function canBePaused(): bool
+    {
+        return in_array($this->estado, ['en_proceso', 'pendiente']);
+    }
+
+    /**
+     * Verifica si esta campaña puede ser reanudada
+     */
+    public function canBeResumed(): bool
+    {
+        return in_array($this->estado, ['pausada', 'pausada_hasta_mañana', 'pausada_fuera_horario', 'pausada_sin_conexion']) && $this->envios_pendientes > 0;
+    }
+
+    /**
+     * Verifica si esta campaña puede ser cancelada
+     */
+    public function canBeCancelled(): bool
+    {
+        return !in_array($this->estado, ['completada', 'cancelada']);
     }
 
     /**

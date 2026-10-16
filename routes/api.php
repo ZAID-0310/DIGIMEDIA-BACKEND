@@ -217,6 +217,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/whatsapp/campaign/preview/{service}', [WhatsAppCampaignController::class, 'previewCampaign']);
         Route::post('/whatsapp/campaign/create', [WhatsAppCampaignController::class, 'createCampaign']);
         Route::post('/whatsapp/campaign/{id}/start', [WhatsAppCampaignController::class, 'startCampaign']);
+        Route::post('/whatsapp/campaign/{id}/pause', [WhatsAppCampaignController::class, 'pauseCampaign']);
+        Route::post('/whatsapp/campaign/{id}/resume', [WhatsAppCampaignController::class, 'resumeCampaign']);
+        Route::post('/whatsapp/campaign/{id}/cancel', [WhatsAppCampaignController::class, 'cancelCampaign']);
         Route::get('/whatsapp/campaign/{id}/status', [WhatsAppCampaignController::class, 'getCampaignStatus']);
         Route::get('/whatsapp/campaigns', [WhatsAppCampaignController::class, 'listCampaigns']);
     });

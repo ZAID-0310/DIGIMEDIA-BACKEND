@@ -273,5 +273,93 @@ class WhatsAppCampaignController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Pausa manualmente una campaña activa
+     */
+    public function pauseCampaign(int $id, Request $request): JsonResponse
+    {
+        try {
+            $campania = $this->whatsAppCampaignService->pauseCampaign($id, $request->user());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Campaña pausada exitosamente',
+                'data' => [
+                    'id_campania' => $campania->id_campania,
+                    'estado' => $campania->estado,
+                ]
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Campaña no encontrada'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 400);
+        }
+    }
+
+    /**
+     * Reanuda manualmente una campaña pausada
+     */
+    public function resumeCampaign(int $id, Request $request): JsonResponse
+    {
+        try {
+            $campania = $this->whatsAppCampaignService->resumeCampaign($id, $request->user());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Campaña reanudada exitosamente',
+                'data' => [
+                    'id_campania' => $campania->id_campania,
+                    'estado' => $campania->estado,
+                ]
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Campaña no encontrada'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 400);
+        }
+    }
+
+    /**
+     * Cancela definitivamente una campaña
+     */
+    public function cancelCampaign(int $id, Request $request): JsonResponse
+    {
+        try {
+            $campania = $this->whatsAppCampaignService->cancelCampaign($id, $request->user());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Campaña cancelada exitosamente',
+                'data' => [
+                    'id_campania' => $campania->id_campania,
+                    'estado' => $campania->estado,
+                ]
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Campaña no encontrada'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 400);
+        }
+    }
 }
+
 

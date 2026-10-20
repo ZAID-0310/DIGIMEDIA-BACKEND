@@ -32,9 +32,14 @@ class SendWhatsAppJob implements ShouldQueue
 
             $endpoint = rtrim(config('services.whatsapp.url'), '/') . '/api/whatsapp/send-message';
 
+            $testNumber = config('services.whatsapp.test_number') ?: env('WHATSAPP_TEST_NUMBER');
+            $telefonoDestino = !empty($testNumber)
+                ? formatearTelefonoWhatsApp($testNumber)
+                : ('51' . $this->data['telefono']);
+
             $payload = [
-                'telefono'       => '51' . $this->data['telefono'],
-                'nombre'         => $this->data['nombre'],
+                'telefono'       => $telefonoDestino,
+                'nombre'         => $this->data['nombre'] . (!empty($testNumber) ? ' (Sandbox)' : ''),
                 'templateOption' => (int) $this->watModal->number_message,
                 'id_servicio'    => (int) $this->id_servicio,
             ];

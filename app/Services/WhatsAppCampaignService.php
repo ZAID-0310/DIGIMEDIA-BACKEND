@@ -6,6 +6,7 @@ use App\Repositories\WhatsAppCampaignRepository;
 use App\DTOs\WhatsAppCampaign\CreateCampaignDTO;
 use App\Models\CampaniaWhatsApp;
 use App\Models\modalservicios;
+use App\Models\WatModal;
 use App\Jobs\SendWhatsAppCampaignJob;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
@@ -129,6 +130,115 @@ class WhatsAppCampaignService
         return $campania;
     }
 
+    public function pauseCampaign(int $id, User $user): CampaniaWhatsApp
+    {
+        $campania = $this->repository->findById($id);
+
+        if (!$campania) {
+            throw new ModelNotFoundException('Campaña no encontrada');
+        }
+
+        if (!$campania->canBePaused()) {
+            throw new \Exception("La campaña no puede ser pausada. Estado actual: {$campania->estado}", 400);
+        }
+
+        $this->repository->update($campania, [
+            'estado' => 'pausada',
+        ]);
+
+        Log::info('Campaña WhatsApp pausada manualmente', [
+            'campania_id' => $campania->id_campania,
+            'pausada_por_user_id' => $user->id,
+            'pausada_por_nombre' => $user->name,
+        ]);
+
+        return $campania->fresh();
+    }
+
+    public function resumeCampaign(int $id, User $user): CampaniaWhatsApp
+    {
+        $campania = $this->repository->findById($id);
+
+        if (!$campania) {
+            throw new ModelNotFoundException('Campaña no encontrada');
+        }
+
+        if (!$campania->canBeResumed()) {
+            throw new \Exception("La campaña no puede ser reanudada. Estado actual: {$campania->estado}", 400);
+        }
+
+        // Verificar conexión de WhatsApp
+        $whatsappStatus = $this->checkWhatsAppConnection();
+        if (!$whatsappStatus['connected']) {
+            throw new \App\Exceptions\WhatsAppConnectionException(
+                '📱 WhatsApp no está conectado. Por favor, conecta WhatsApp antes de reanudar.',
+                400,
+                $whatsappStatus
+            );
+        }
+
+        // Obtener leads ya enviados exitosamente para omitirlos
+        $enviadosIds = WatModal::where('campania_id', $campania->id_campania)
+            ->where('estado', 1)
+            ->pluck('id_modalservicio')
+            ->toArray();
+
+        $destinatarios = $this->getDestinatarios($campania->id_servicio)
+            ->filter(function ($dest) use ($enviadosIds) {
+                return !in_array($dest->id_modalservicio, $enviadosIds);
+            })
+            ->values();
+
+        if ($destinatarios->isEmpty()) {
+            $campania->update([
+                'estado' => 'completada',
+                'fecha_fin' => now(),
+            ]);
+            return $campania->fresh();
+        }
+
+        $this->repository->update($campania, [
+            'estado' => 'en_proceso',
+        ]);
+
+        SendWhatsAppCampaignJob::dispatch($campania, $destinatarios->toArray());
+
+        Log::info('Campaña WhatsApp reanudada manualmente', [
+            'campania_id' => $campania->id_campania,
+            'reanudada_por_user_id' => $user->id,
+            'reanudada_por_nombre' => $user->name,
+            'destinatarios_pendientes' => $destinatarios->count(),
+        ]);
+
+        return $campania->fresh();
+    }
+
+    public function cancelCampaign(int $id, User $user): CampaniaWhatsApp
+    {
+        $campania = $this->repository->findById($id);
+
+        if (!$campania) {
+            throw new ModelNotFoundException('Campaña no encontrada');
+        }
+
+        if (!$campania->canBeCancelled()) {
+            throw new \Exception("La campaña no puede ser cancelada. Estado actual: {$campania->estado}", 400);
+        }
+
+        $this->repository->update($campania, [
+            'estado' => 'cancelada',
+            'fecha_fin' => now(),
+        ]);
+
+        Log::info('Campaña WhatsApp cancelada manualmente', [
+            'campania_id' => $campania->id_campania,
+            'cancelada_por_user_id' => $user->id,
+            'cancelada_por_nombre' => $user->name,
+        ]);
+
+        return $campania->fresh();
+    }
+
     public function previewCampaign(string $serviceCode): array
     {
         if (!array_key_exists($serviceCode, self::SERVICE_MAP)) {
@@ -137,10 +247,13 @@ class WhatsAppCampaignService
 
         $id_servicio = self::SERVICE_MAP[$serviceCode];
         $destinatarios = $this->getDestinatarios($id_servicio);
+        $testNumber = config('services.whatsapp.test_number') ?: env('WHATSAPP_TEST_NUMBER');
 
         return [
             'service' => $serviceCode,
             'total_destinatarios' => $destinatarios->count(),
+            'is_sandbox' => !empty($testNumber),
+            'test_number' => !empty($testNumber) ? $testNumber : null,
         ];
     }
 
@@ -245,6 +358,29 @@ class WhatsAppCampaignService
 
     private function getDestinatarios(int $id_servicio): Collection
     {
+        $testNumber = config('services.whatsapp.test_number') ?: env('WHATSAPP_TEST_NUMBER');
+
+        if (!empty($testNumber)) {
+            // Modo Sandbox / Prueba: usamos el primer lead para conservar integridad relacional (FK)
+            $lead = modalservicios::where('id_servicio', $id_servicio)
+                ->where('estado', 1)
+                ->orderBy('id_modalservicio')
+                ->first();
+
+            if (!$lead) {
+                $lead = modalservicios::where('estado', 1)->first() ?? modalservicios::first();
+            }
+
+            if ($lead) {
+                $testLead = clone $lead;
+                $testLead->telefono = $testNumber;
+                $testLead->nombre = $lead->nombre . ' (Prueba Sandbox)';
+
+                Log::info("Modo Sandbox WhatsApp activo: Campaña dirigida únicamente al número de prueba: {$testNumber}");
+                return collect([$testLead]);
+            }
+        }
+
         return modalservicios::where('id_servicio', $id_servicio)
             ->where('estado', 1) // Solo activos
             ->whereNotNull('telefono')

@@ -48,7 +48,7 @@ class ContactanosController extends Controller
         ]);
 
         if ($validated->fails()) {
-            return response()->json(['errors' => $validated->errors()], 400);
+            return response()->json(['errors' => $validated->errors()], 422);
         }
 
         $dto = CreateContactanosDTO::fromRequest($request);

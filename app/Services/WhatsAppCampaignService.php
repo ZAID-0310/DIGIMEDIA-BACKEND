@@ -112,6 +112,11 @@ class WhatsAppCampaignService
             throw new \Exception('No hay destinatarios disponibles para esta campaña', 400);
         }
 
+        // Garantizar que ninguna otra campaña quede activa al iniciar esta
+        CampaniaWhatsApp::whereIn('estado', ['en_proceso', 'pendiente'])
+            ->where('id_campania', '!=', $campania->id_campania)
+            ->update(['estado' => 'pausada']);
+
         // Actualizar estado y fecha de inicio
         $this->repository->update($campania, [
             'estado' => 'pendiente',
@@ -196,6 +201,11 @@ class WhatsAppCampaignService
             ]);
             return $campania->fresh();
         }
+
+        // Garantizar que ninguna otra campaña quede activa al reanudar esta
+        CampaniaWhatsApp::whereIn('estado', ['en_proceso', 'pendiente'])
+            ->where('id_campania', '!=', $campania->id_campania)
+            ->update(['estado' => 'pausada']);
 
         $this->repository->update($campania, [
             'estado' => 'en_proceso',

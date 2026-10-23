@@ -168,11 +168,22 @@ class CampaniaWhatsApp extends Model
 
     /**
      * Obtiene la campaña activa actualmente (si existe)
+     * Prioriza la que está efectivamente en proceso/pendiente, y luego la pausada más reciente
      */
     public static function getActiveCampaign(): ?self
     {
-        return self::whereIn('estado', ['en_proceso', 'pendiente', 'pausada', 'pausada_hasta_mañana', 'pausada_fuera_horario', 'pausada_sin_conexion'])
-            ->orderBy('created_at', 'asc') // FIFO: primera que se creó
+        // 1. Prioridad: la que realmente está en proceso de envío
+        $inProcess = self::whereIn('estado', ['en_proceso', 'pendiente'])
+            ->orderBy('updated_at', 'desc')
+            ->first();
+
+        if ($inProcess) {
+            return $inProcess;
+        }
+
+        // 2. Si no hay en ejecución, la que está en estado pausado más reciente
+        return self::whereIn('estado', ['pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])
+            ->orderBy('updated_at', 'desc')
             ->first();
     }
 
@@ -186,9 +197,9 @@ class CampaniaWhatsApp extends Model
             return false;
         }
 
-        // Si hay otra campaña activa, no se puede iniciar
-        $activeCampaign = self::getActiveCampaign();
-        if ($activeCampaign && $activeCampaign->id_campania !== $this->id_campania) {
+        // Si hay otra campaña actualmente en proceso/pendiente, no se puede iniciar directamente sin pausarla
+        $inProcess = self::whereIn('estado', ['en_proceso', 'pendiente'])->first();
+        if ($inProcess && $inProcess->id_campania !== $this->id_campania) {
             return false;
         }
 

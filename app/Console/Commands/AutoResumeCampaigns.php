@@ -94,9 +94,19 @@ class AutoResumeCampaigns extends Command
                     ->pluck('id_modalservicio')
                     ->toArray();
                 
-                $destinatarios = modalservicios::where('id_servicio', $campania->id_servicio)
+                $destinatariosQuery = modalservicios::where('id_servicio', $campania->id_servicio)
+                    ->where('estado', 1)
+                    ->whereNotNull('telefono')
+                    ->where('telefono', '!=', '')
                     ->whereNotIn('id_modalservicio', $enviadosIds)
-                    ->get()
+                    ->orderBy('id_modalservicio');
+
+                if ($campania->envios_pendientes > 0) {
+                    $destinatariosQuery->limit($campania->envios_pendientes);
+                }
+
+                $destinatarios = $destinatariosQuery->get()
+                    ->unique('telefono')
                     ->map(function ($dest) {
                         return [
                             'id_modalservicio' => $dest->id_modalservicio,
@@ -104,6 +114,7 @@ class AutoResumeCampaigns extends Command
                             'telefono' => $dest->telefono,
                         ];
                     })
+                    ->values()
                     ->toArray();
                 
                 if (empty($destinatarios)) {

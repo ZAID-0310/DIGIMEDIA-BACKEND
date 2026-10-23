@@ -43,6 +43,14 @@ class WhatsAppCampaignService
             throw new \Exception('No hay destinatarios activos con teléfonos válidos para este servicio', 400);
         }
 
+        // Si se especificó una cantidad de destinatarios personalizada, limitar
+        if ($dto->cantidadDestinatarios !== null && $dto->cantidadDestinatarios > 0) {
+            if ($dto->cantidadDestinatarios > $destinatarios->count()) {
+                throw new \Exception("La cantidad solicitada ({$dto->cantidadDestinatarios}) supera el total de destinatarios disponibles ({$destinatarios->count()}).", 422);
+            }
+            $destinatarios = $destinatarios->take($dto->cantidadDestinatarios);
+        }
+
         // Subir imagen a Cloudinary
         $imagenUrl = $this->uploadImageToCloudinary($dto->image, 'campanias_whatsapp');
 
@@ -111,6 +119,16 @@ class WhatsAppCampaignService
         if ($destinatarios->isEmpty()) {
             throw new \Exception('No hay destinatarios disponibles para esta campaña', 400);
         }
+
+        // Si la campaña fue creada con una cantidad limitada de destinatarios, respetarla
+        if ($campania->total_destinatarios > 0) {
+            $destinatarios = $destinatarios->take($campania->total_destinatarios);
+        }
+
+        // Garantizar que ninguna otra campaña quede activa al iniciar esta
+        CampaniaWhatsApp::whereIn('estado', ['en_proceso', 'pendiente'])
+            ->where('id_campania', '!=', $campania->id_campania)
+            ->update(['estado' => 'pausada']);
 
         // Actualizar estado y fecha de inicio
         $this->repository->update($campania, [
@@ -183,7 +201,12 @@ class WhatsAppCampaignService
             ->pluck('id_modalservicio')
             ->toArray();
 
-        $destinatarios = $this->getDestinatarios($campania->id_servicio)
+        $destinatariosBase = $this->getDestinatarios($campania->id_servicio);
+        if ($campania->total_destinatarios > 0) {
+            $destinatariosBase = $destinatariosBase->take($campania->total_destinatarios);
+        }
+
+        $destinatarios = $destinatariosBase
             ->filter(function ($dest) use ($enviadosIds) {
                 return !in_array($dest->id_modalservicio, $enviadosIds);
             })
@@ -196,6 +219,11 @@ class WhatsAppCampaignService
             ]);
             return $campania->fresh();
         }
+
+        // Garantizar que ninguna otra campaña quede activa al reanudar esta
+        CampaniaWhatsApp::whereIn('estado', ['en_proceso', 'pendiente'])
+            ->where('id_campania', '!=', $campania->id_campania)
+            ->update(['estado' => 'pausada']);
 
         $this->repository->update($campania, [
             'estado' => 'en_proceso',
@@ -252,6 +280,7 @@ class WhatsAppCampaignService
         return [
             'service' => $serviceCode,
             'total_destinatarios' => $destinatarios->count(),
+            'destinatarios_disponibles' => $destinatarios->count(),
             'is_sandbox' => !empty($testNumber),
             'test_number' => !empty($testNumber) ? $testNumber : null,
         ];

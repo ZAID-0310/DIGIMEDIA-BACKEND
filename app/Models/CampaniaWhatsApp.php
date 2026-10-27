@@ -15,6 +15,7 @@ class CampaniaWhatsApp extends Model
     protected $fillable = [
         'id_servicio',
         'user_id',
+        'deleted_by',
         'parrafo',
         'imagen_url',
         'estado',
@@ -26,11 +27,13 @@ class CampaniaWhatsApp extends Model
         'fecha_ultimo_envio',
         'fecha_inicio',
         'fecha_fin',
+        'fecha_eliminada',
     ];
 
     protected $casts = [
         'fecha_inicio' => 'datetime',
         'fecha_fin' => 'datetime',
+        'fecha_eliminada' => 'datetime',
         'fecha_ultimo_envio' => 'date',
         'total_destinatarios' => 'integer',
         'envios_exitosos' => 'integer',
@@ -53,6 +56,14 @@ class CampaniaWhatsApp extends Model
     public function usuario()
     {
         return $this->belongsTo(User::class, 'user_id', 'id');
+    }
+
+    /**
+     * Relación con usuario (quién eliminó la campaña)
+     */
+    public function usuarioEliminador()
+    {
+        return $this->belongsTo(User::class, 'deleted_by', 'id');
     }
 
     /**
@@ -93,7 +104,7 @@ class CampaniaWhatsApp extends Model
         $this->refresh();
 
         // Si ya está en un estado final o pausado, no sobreescribir
-        if (in_array($this->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+        if (in_array($this->estado, ['cancelada', 'eliminada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
             return;
         }
 
@@ -227,7 +238,23 @@ class CampaniaWhatsApp extends Model
      */
     public function canBeCancelled(): bool
     {
-        return !in_array($this->estado, ['completada', 'cancelada']);
+        return !in_array($this->estado, ['completada', 'cancelada', 'eliminada']);
+    }
+
+    /**
+     * Verifica si esta campaña puede ser eliminada
+     */
+    public function canBeDeleted(): bool
+    {
+        return $this->estado !== 'eliminada';
+    }
+
+    /**
+     * Verifica si la campaña está eliminada
+     */
+    public function isDeleted(): bool
+    {
+        return $this->estado === 'eliminada';
     }
 
     /**

@@ -48,6 +48,12 @@ class CampaniaWhatsAppDetailsResource extends JsonResource
             'has_failed_messages_to_retry' => $this->hasFailedMessagesToRetry(),
             'total_mensajes'             => $this->mensajesWhatsApp->count(),
             'can_auto_resume'            => $this->canAutoResume(),
+            'usuario_eliminador'         => $this->usuarioEliminador ? [
+                'id' => $this->usuarioEliminador->id,
+                'name' => $this->usuarioEliminador->name,
+            ] : null,
+            'fecha_eliminada'            => $this->fecha_eliminada,
+            'is_deleted'                 => $this->isDeleted(),
         ];
     }
 }

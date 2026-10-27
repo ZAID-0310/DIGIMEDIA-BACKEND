@@ -22,7 +22,7 @@ class CampaniaFiltersRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'estado' => ['nullable', 'string', 'in:borrador,pendiente,en_proceso,pausada_hasta_mañana,pausada_fuera_horario,pausada_sin_conexion,completada'],
+            'estado' => ['nullable', 'string', 'in:borrador,pendiente,en_proceso,pausada,pausada_hasta_mañana,pausada_fuera_horario,pausada_sin_conexion,completada,cancelada,eliminada,error'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }

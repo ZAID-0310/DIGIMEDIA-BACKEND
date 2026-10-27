@@ -267,6 +267,34 @@ class WhatsAppCampaignService
         return $campania->fresh();
     }
 
+    public function deleteCampaign(int $id, User $user): CampaniaWhatsApp
+    {
+        $campania = $this->repository->findById($id);
+
+        if (!$campania) {
+            throw new ModelNotFoundException('Campaña no encontrada');
+        }
+
+        if (!$campania->canBeDeleted()) {
+            throw new \Exception("La campaña ya se encuentra eliminada.", 400);
+        }
+
+        $this->repository->update($campania, [
+            'estado' => 'eliminada',
+            'deleted_by' => $user->id,
+            'fecha_eliminada' => now(),
+            'fecha_fin' => $campania->fecha_fin ?? now(),
+        ]);
+
+        Log::info('Campaña WhatsApp marcada como eliminada para auditoría', [
+            'campania_id' => $campania->id_campania,
+            'eliminada_por_user_id' => $user->id,
+            'eliminada_por_nombre' => $user->name,
+        ]);
+
+        return $campania->fresh();
+    }
+
     public function previewCampaign(string $serviceCode): array
     {
         if (!array_key_exists($serviceCode, self::SERVICE_MAP)) {

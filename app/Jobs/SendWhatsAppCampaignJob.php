@@ -52,7 +52,7 @@ class SendWhatsAppCampaignJob implements ShouldQueue
             $this->campania->resetDailyCounterIfNeeded();
 
             $this->campania->refresh();
-            if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+            if (in_array($this->campania->estado, ['cancelada', 'eliminada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
                 Log::info("Job SendWhatsAppCampaignJob abortado para campaña #{$this->campania->id_campania} por estado: {$this->campania->estado}");
                 return;
             }
@@ -128,7 +128,7 @@ class SendWhatsAppCampaignJob implements ShouldQueue
 
                 // Verificar si la campaña fue pausada o cancelada durante el processChunk
                 $this->campania->refresh();
-                if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+                if (in_array($this->campania->estado, ['cancelada', 'eliminada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
                     Log::info('Campaña detenida o pausada - deteniendo procesamiento de chunks restantes', [
                         'campania_id' => $this->campania->id_campania,
                         'estado' => $this->campania->estado,
@@ -146,7 +146,7 @@ class SendWhatsAppCampaignJob implements ShouldQueue
             // 🔁 FASE 3: Procesar reintentos para mensajes fallidos
             // NO procesar reintentos si la campaña fue pausada o cancelada
             $this->campania->refresh();
-            if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+            if (in_array($this->campania->estado, ['cancelada', 'eliminada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
                 Log::info('Campaña pausada o cancelada - omitiendo procesamiento de reintentos', [
                     'campania_id' => $this->campania->id_campania,
                     'estado' => $this->campania->estado
@@ -194,7 +194,7 @@ class SendWhatsAppCampaignJob implements ShouldQueue
         foreach ($chunk as $posicion => $destinatario) {
             // --- Verificar conexión / estado antes de cada mensaje ---
             $this->campania->refresh();
-            if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+            if (in_array($this->campania->estado, ['cancelada', 'eliminada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
                 Log::info("Campaña detenida por estado ({$this->campania->estado}) - deteniendo envíos restantes en chunk", [
                     'campania_id'      => $this->campania->id_campania,
                     'pendientes_chunk' => $totalEnChunk - $posicion,
@@ -484,7 +484,7 @@ class SendWhatsAppCampaignJob implements ShouldQueue
             foreach ($retryChunks as $chunkIndex => $retryChunk) {
                 // Verificar estado de campaña antes de procesar reintentos
                 $this->campania->refresh();
-                if (in_array($this->campania->estado, ['cancelada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
+                if (in_array($this->campania->estado, ['cancelada', 'eliminada', 'pausada', 'pausada_sin_conexion', 'pausada_hasta_mañana', 'pausada_fuera_horario'])) {
                     Log::info("Reintentos abortados por estado de campaña ({$this->campania->estado})", [
                         'campania_id' => $this->campania->id_campania
                     ]);

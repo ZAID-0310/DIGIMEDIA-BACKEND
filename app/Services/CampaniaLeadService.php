@@ -29,8 +29,9 @@ class CampaniaLeadService
         
         $query = $this->modalServicioRepository->getLeadsWithWhatsAppStatus($validLeadIds, $campaniaId, $filters);
         
-        $leads = $query->orderByRaw('modal_wats.id_modal_wat IS NULL DESC')
+        $leads = $query->orderByRaw('modal_wats.id_modal_wat IS NULL ASC')
             ->orderBy('modal_wats.fecha', 'desc')
+            ->orderBy('modalservicios.id_modalservicio', 'asc')
             ->paginate($filters['perPage'] ?? 15);
 
         return [

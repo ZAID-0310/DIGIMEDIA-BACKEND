@@ -67,7 +67,7 @@ class ModalServicioRepository
             ]);
 
         // Filtro por estado
-        if (isset($filters['estado'])) {
+        if (!empty($filters['estado'])) {
             if ($filters['estado'] === 'pendiente') {
                 $query->whereNull('modal_wats.id_modal_wat');
             } elseif ($filters['estado'] === 'enviado') {

@@ -54,6 +54,31 @@ class Blog extends Model
     // ============================================================
 
     /**
+     * Filtrar solo blogs publicados (con card asociada y estado_publicacion = true)
+     * Uso: Blog::publicados()->get()
+     */
+    public function scopePublicados($query)
+    {
+        return $query->whereHas('card', function ($q) {
+            $q->where('estado_publicacion', true);
+        });
+    }
+
+    /**
+     * Filtrar solo blogs en borrador o invisibles (sin card o con estado_publicacion = false)
+     * Uso: Blog::borrador()->get()
+     */
+    public function scopeBorrador($query)
+    {
+        return $query->where(function ($q) {
+            $q->doesntHave('card')
+              ->orWhereHas('card', function ($sub) {
+                  $sub->where('estado_publicacion', false);
+              });
+        });
+    }
+
+    /**
      * Filtrar blogs con cards
      * Uso: Blog::conCards()->get()
      */

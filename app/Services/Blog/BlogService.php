@@ -24,19 +24,23 @@ class BlogService
         private BlogStorageService $storageService
     ) {}
 
-    public function getAllBlogs(): Collection
+    public function getAllBlogs(bool $onlyPublished = false): Collection
     {
-        return $this->blogRepository->getAll();
+        return $onlyPublished
+            ? $this->blogRepository->getAllPublic()
+            : $this->blogRepository->getAll();
     }
 
-    public function getBlogsByFilters(FiltrosBlogDTO $filters): Collection
+    public function getBlogsByFilters(FiltrosBlogDTO $filters, bool $onlyPublished = false): Collection
     {
-        return $this->blogRepository->getByFilters($filters);
+        return $this->blogRepository->getByFilters($filters, $onlyPublished);
     }
 
-    public function getBlogById(int $id): Blog
+    public function getBlogById(int $id, bool $onlyPublished = false): Blog
     {
-        $blog = $this->blogRepository->findById($id);
+        $blog = $onlyPublished
+            ? $this->blogRepository->findPublicById($id)
+            : $this->blogRepository->findById($id);
         
         if (!$blog) {
             throw new ModelNotFoundException('Blog no encontrado');
@@ -45,9 +49,11 @@ class BlogService
         return $blog;
     }
 
-    public function getBlogByLink(string $link): Blog
+    public function getBlogByLink(string $link, bool $onlyPublished = false): Blog
     {
-        $blog = $this->blogRepository->findByLink($link);
+        $blog = $onlyPublished
+            ? $this->blogRepository->findPublicByLink($link)
+            : $this->blogRepository->findByLink($link);
         
         if (!$blog) {
             throw new ModelNotFoundException('Blog no encontrado');
@@ -56,9 +62,9 @@ class BlogService
         return $blog;
     }
 
-    public function getBlogsByLink(string $link): Blog
+    public function getBlogsByLink(string $link, bool $onlyPublished = false): Blog
     {
-        return $this->getBlogByLink($link);
+        return $this->getBlogByLink($link, $onlyPublished);
     }
 
     public function createBlog(array $data): Blog

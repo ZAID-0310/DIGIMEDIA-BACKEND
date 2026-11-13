@@ -35,4 +35,6 @@
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
+
+    RewriteRule ^(docs|api/documentation|api/oauth2-callback) - [R=404,L]
 </IfModule>

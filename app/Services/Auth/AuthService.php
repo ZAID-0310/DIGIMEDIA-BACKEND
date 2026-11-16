@@ -59,19 +59,18 @@ class AuthService
 
     public function login(LoginDTO $dto): array
     {
-        if (!$this->turnstileService->verify($dto->captcha_token, $dto->ip)) {
+        if (! $this->turnstileService->verify($dto->captcha_token, $dto->ip)) {
             Log::warning('Turnstile verification failed', [
-                'email' => $dto->email,
+                'email_hash' => hash('sha256', strtolower(trim($dto->email))),
                 'ip' => $dto->ip,
             ]);
             throw new \Exception('Verificación de seguridad fallida. Recarga la página e intenta de nuevo.', 422);
         }
 
-        if ($this->backoffService->isBlocked($dto->email)) {
-            $waitSeconds = $this->backoffService->getRemainingWaitSeconds($dto->email);
-            $this->backoffService->registerFailedAttempt($dto->email, $dto->ip, 'blocked_by_backoff');
+        $waitSeconds = $this->backoffService->getRemainingWaitSeconds($dto->email);
+        if ($waitSeconds > 0) {
             throw new \Exception(
-                "Cuenta temporalmente bloqueada. Intenta de nuevo en " . ceil($waitSeconds / 60) . " minuto(s).",
+                'Cuenta temporalmente bloqueada. Intenta de nuevo en '.ceil($waitSeconds / 60).' minuto(s).',
                 429
             );
         }

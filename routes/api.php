@@ -35,7 +35,7 @@ use App\Http\Controllers\Api\TestimonioController;
 // ============================================================
 
 Route::middleware('throttle:5,1')->post('/register', [AuthController::class, 'register']);
-Route::middleware('throttle:5,1')->post('/login', [AuthController::class, 'login'])->name('login');
+Route::middleware('throttle:login')->post('/login', [AuthController::class, 'login'])->name('login');
 Route::middleware('throttle:5,1')->post('/reset_password', [AuthController::class, "forgotPassword"]);
 Route::middleware('throttle:5,1')->post('/update_password', [AuthController::class, "updatePassword"]);
 

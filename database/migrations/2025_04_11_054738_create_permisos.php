@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id('id_permiso');
             $table->string('nombre')->unique();
             $table->string('slug')->unique()->nullable();
-            $table->string('descripcion')->nullable();
+            $table->string('descripcion', 100)->nullable(); 
         });
     }
 

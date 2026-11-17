@@ -12,12 +12,15 @@ use App\Services\BlogBodyService;
 use App\DTOs\BlogBody\UpdateBlogBodyDTO;
 use App\DTOs\BlogHead\UpdateBlogHeadDTO;
 use App\DTOs\Blog\FiltrosBlogDTO;
+use App\Traits\AuthorizesBlogAccess;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
 class BlogController extends Controller
 {
+    use AuthorizesBlogAccess;
+
     public function __construct(
         private BlogService $blogService,
         private BlogHeadService $blogHeadService,
@@ -27,7 +30,8 @@ class BlogController extends Controller
     public function index()
     {
         try {
-            $blogs = $this->blogService->getAllBlogs();
+            $onlyPublished = !$this->canViewUnpublishedBlogs();
+            $blogs = $this->blogService->getAllBlogs($onlyPublished);
             return BlogResource::collection($blogs);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
@@ -37,8 +41,9 @@ class BlogController extends Controller
     public function blogByMonthYear(Request $request)
     {
         try {
+            $onlyPublished = !$this->canViewUnpublishedBlogs();
             $filters = FiltrosBlogDTO::fromRequest($request);
-            $blogs = $this->blogService->getBlogsByFilters($filters);
+            $blogs = $this->blogService->getBlogsByFilters($filters, $onlyPublished);
             return response()->json($blogs, 200);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
@@ -195,7 +200,8 @@ class BlogController extends Controller
     public function show(int $id)
     {
         try {
-            $blog = $this->blogService->getBlogById($id);
+            $onlyPublished = !$this->canViewUnpublishedBlogs();
+            $blog = $this->blogService->getBlogById($id, $onlyPublished);
 
             return response()->json([
                 'status' => 200,
@@ -214,7 +220,8 @@ class BlogController extends Controller
     public function showLink(string $link)
     {
         try {
-            $blog = $this->blogService->getBlogByLink($link);
+            $onlyPublished = !$this->canViewUnpublishedBlogs();
+            $blog = $this->blogService->getBlogByLink($link, $onlyPublished);
 
             return response()->json([
                 'status' => 200,

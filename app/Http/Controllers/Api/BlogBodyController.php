@@ -9,10 +9,12 @@ use App\Http\Resources\BlogBodyResource;
 use App\Services\BlogBodyService;
 use App\DTOs\BlogBody\CreateBlogBodyDTO;
 use App\DTOs\BlogBody\UpdateBlogBodyDTO;
+use App\Traits\AuthorizesBlogAccess;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class BlogBodyController extends Controller
 {
+    use AuthorizesBlogAccess;
     public function __construct(
         private BlogBodyService $blogBodyService
     ) {}
@@ -66,6 +68,17 @@ class BlogBodyController extends Controller
     {
         try {
             $blogBody = $this->blogBodyService->findById($id);
+
+            if (!$this->canViewUnpublishedBlogs()) {
+                $blog = $blogBody->blog;
+                $isPublished = $blog && $blog->card && $blog->card->estado_publicacion;
+                if (!$isPublished) {
+                    return response()->json([
+                        "status" => 404,
+                        "message" => "BlogBody no encontrado"
+                    ], 404);
+                }
+            }
 
             return response()->json([
                 "status" => 200,

@@ -9,10 +9,12 @@ use App\Http\Resources\BlogHeadResource;
 use App\Services\Blog\BlogHeadService;
 use App\DTOs\BlogHead\CreateBlogHeadDTO;
 use App\DTOs\BlogHead\UpdateBlogHeadDTO;
+use App\Traits\AuthorizesBlogAccess;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class BlogHeadController extends Controller
 {
+    use AuthorizesBlogAccess;
     public function __construct(
         private BlogHeadService $blogHeadService
     ) {}
@@ -73,6 +75,17 @@ class BlogHeadController extends Controller
     {
         try {
             $blogHead = $this->blogHeadService->findById($id);
+
+            if (!$this->canViewUnpublishedBlogs()) {
+                $blog = $blogHead->blog;
+                $isPublished = $blog && $blog->card && $blog->card->estado_publicacion;
+                if (!$isPublished) {
+                    return response()->json([
+                        "status" => 404,
+                        "message" => "BlogHead no encontrado"
+                    ], 404);
+                }
+            }
 
             return response()->json([
                 "status" => 200,

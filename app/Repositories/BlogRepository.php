@@ -15,14 +15,29 @@ class BlogRepository
         return Blog::completo()->reciente()->get();
     }
 
+    public function getAllPublic(): Collection
+    {
+        return Blog::publicados()->completo()->reciente()->get();
+    }
+
     public function findById(int $id): ?Blog
     {
         return Blog::completo()->find($id);
     }
 
+    public function findPublicById(int $id): ?Blog
+    {
+        return Blog::publicados()->completo()->find($id);
+    }
+
     public function findByLink(string $link): ?Blog
     {
         return Blog::completo()->where('link', $link)->first();
+    }
+
+    public function findPublicByLink(string $link): ?Blog
+    {
+        return Blog::publicados()->completo()->where('link', $link)->first();
     }
 
     public function create(CreateBlogDTO $dto): Blog
@@ -35,10 +50,14 @@ class BlogRepository
         return $blog->update($dto->toArray());
     }
 
-    public function getByFilters(FiltrosBlogDTO $filters): Collection
+    public function getByFilters(FiltrosBlogDTO $filters, bool $onlyPublished = false): Collection
     {
         $query = Blog::completo();
         
+        if ($onlyPublished) {
+            $query->publicados();
+        }
+
         if ($filters->month !== null) {
             $query->whereMonth('fecha', $filters->month);
         }

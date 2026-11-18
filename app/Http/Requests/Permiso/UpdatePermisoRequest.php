@@ -24,12 +24,17 @@ class UpdatePermisoRequest extends FormRequest
 
         return [
             'nombre' => [
-                'required',
+                'sometimes',
                 'string',
-                'max:255',
+                'max:25',
                 Rule::unique('permisos', 'nombre')->ignore($id, 'id_permiso'),
             ],
-            'descripcion' => 'nullable|string',
+            'descripcion' => [
+                'sometimes', 
+                'nullable',
+                'string',
+                'max:100',
+            ],
         ];
     }
 }

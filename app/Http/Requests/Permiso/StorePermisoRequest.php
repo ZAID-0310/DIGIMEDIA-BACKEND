@@ -20,8 +20,8 @@ class StorePermisoRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nombre'      => 'required|string|max:255|unique:permisos,nombre',
-            'descripcion' => 'nullable|string',
+            'nombre'      => 'required|string|max:25|unique:permisos,nombre',
+            'descripcion' => 'nullable|string|max:100',
         ];
     }
 }

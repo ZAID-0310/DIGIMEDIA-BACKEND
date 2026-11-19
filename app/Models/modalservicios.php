@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\Subservicio;
 
@@ -39,6 +40,19 @@ class modalservicios extends Model
     {
         return $this->hasMany(WatModal::class, 'id_modalservicio', 'id_modalservicio');
     }
+
+    public function campaniasWhatsApp(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            CampaniaWhatsApp::class,
+            'campania_destinatarios',
+            'id_modalservicio',
+            'campania_id',
+            'id_modalservicio',
+            'id_campania'
+        );
+    }
+
     public function emailModal()
     {
         return $this->hasMany(EmailModal::class, 'id_modalservicio', 'id_modalservicio');

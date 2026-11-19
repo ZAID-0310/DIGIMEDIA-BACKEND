@@ -89,22 +89,42 @@ class AutoResumeCampaigns extends Command
             $this->info("🚀 Reanudando campaña #{$campania->id_campania}...");
             
             try {
-                // Obtener destinatarios pendientes
-                $enviadosIds = WatModal::where('campania_id', $campania->id_campania)
-                    ->pluck('id_modalservicio')
-                    ->toArray();
-                
-                $destinatarios = modalservicios::where('id_servicio', $campania->id_servicio)
-                    ->whereNotIn('id_modalservicio', $enviadosIds)
-                    ->get()
-                    ->map(function ($dest) {
-                        return [
-                            'id_modalservicio' => $dest->id_modalservicio,
-                            'nombre' => $dest->nombre,
-                            'telefono' => $dest->telefono,
-                        ];
-                    })
-                    ->toArray();
+                if ($campania->destinatarios_persistidos) {
+                    if (!$campania->destinatarios()->exists()) {
+                        throw new \RuntimeException(
+                            'Error de integridad: la campaña está marcada con destinatarios persistidos, pero no tiene asociaciones.'
+                        );
+                    }
+
+                    $pendingRecipients = $campania->getPendingPersistedRecipients();
+                    $campania->reconcilePersistedRecipientCounts($pendingRecipients);
+                    $destinatarios = $pendingRecipients
+                        ->map(function ($dest) {
+                            return [
+                                'id_modalservicio' => $dest->id_modalservicio,
+                                'nombre' => $dest->nombre,
+                                'telefono' => $dest->telefono,
+                            ];
+                        })
+                        ->toArray();
+                } else {
+                    // Mantener el comportamiento previo para campañas históricas.
+                    $enviadosIds = WatModal::where('campania_id', $campania->id_campania)
+                        ->pluck('id_modalservicio')
+                        ->toArray();
+
+                    $destinatarios = modalservicios::where('id_servicio', $campania->id_servicio)
+                        ->whereNotIn('id_modalservicio', $enviadosIds)
+                        ->get()
+                        ->map(function ($dest) {
+                            return [
+                                'id_modalservicio' => $dest->id_modalservicio,
+                                'nombre' => $dest->nombre,
+                                'telefono' => $dest->telefono,
+                            ];
+                        })
+                        ->toArray();
+                }
                 
                 if (empty($destinatarios)) {
                     $this->warn("⚠️ Campaña #{$campania->id_campania}: No hay destinatarios pendientes");

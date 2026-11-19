@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Collection;
 
 class CampaniaWhatsApp extends Model
 {
@@ -19,6 +21,7 @@ class CampaniaWhatsApp extends Model
         'imagen_url',
         'estado',
         'total_destinatarios',
+        'destinatarios_persistidos',
         'envios_exitosos',
         'envios_fallidos',
         'envios_pendientes',
@@ -33,6 +36,7 @@ class CampaniaWhatsApp extends Model
         'fecha_fin' => 'datetime',
         'fecha_ultimo_envio' => 'date',
         'total_destinatarios' => 'integer',
+        'destinatarios_persistidos' => 'boolean',
         'envios_exitosos' => 'integer',
         'envios_fallidos' => 'integer',
         'envios_pendientes' => 'integer',
@@ -53,6 +57,61 @@ class CampaniaWhatsApp extends Model
     public function usuario()
     {
         return $this->belongsTo(User::class, 'user_id', 'id');
+    }
+
+    public function destinatarios(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            modalservicios::class,
+            'campania_destinatarios',
+            'campania_id',
+            'id_modalservicio',
+            'id_campania',
+            'id_modalservicio'
+        );
+    }
+
+    public function getEligiblePersistedRecipients(): Collection
+    {
+        return $this->destinatarios()
+            ->where('modalservicios.estado', 1)
+            ->whereNotNull('modalservicios.telefono')
+            ->where('modalservicios.telefono', '!=', '')
+            ->orderBy('modalservicios.id_modalservicio')
+            ->get();
+    }
+
+    public function getPendingPersistedRecipients(): Collection
+    {
+        $selectedIds = $this->destinatarios()
+            ->pluck('modalservicios.id_modalservicio');
+
+        $processedIds = WatModal::query()
+            ->where('campania_id', $this->id_campania)
+            ->whereIn('id_modalservicio', $selectedIds)
+            ->distinct()
+            ->pluck('id_modalservicio');
+
+        return $this->getEligiblePersistedRecipients()
+            ->reject(fn (modalservicios $recipient) => $processedIds->contains($recipient->id_modalservicio))
+            ->values();
+    }
+
+    public function reconcilePersistedRecipientCounts(Collection $pendingRecipients): void
+    {
+        $selectedIds = $this->destinatarios()
+            ->pluck('modalservicios.id_modalservicio');
+
+        $processedCount = WatModal::query()
+            ->where('campania_id', $this->id_campania)
+            ->whereIn('id_modalservicio', $selectedIds)
+            ->distinct()
+            ->count('id_modalservicio');
+
+        $this->forceFill([
+            'total_destinatarios' => $processedCount + $pendingRecipients->count(),
+            'envios_pendientes' => $pendingRecipients->count(),
+        ])->save();
     }
 
     /**

@@ -27,6 +27,7 @@ class WhatsAppCampaignController extends Controller
                 'service' => 'required|string|in:p1,p2,p3,p4',
                 'paragraph' => 'required|string|min:10|max:1000',
                 'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048', // 2MB
+                'cantidad_destinatarios' => 'sometimes|integer|min:1',
             ]);
 
             $dto = CreateCampaignDTO::fromRequest($request);
@@ -274,4 +275,3 @@ class WhatsAppCampaignController extends Controller
         }
     }
 }
-

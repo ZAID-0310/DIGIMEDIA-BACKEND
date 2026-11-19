@@ -10,9 +10,11 @@ use App\Jobs\SendWhatsAppCampaignJob;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 
 class WhatsAppCampaignService
 {
@@ -38,9 +40,23 @@ class WhatsAppCampaignService
         // Verificar que hay destinatarios disponibles
         $destinatarios = $this->getDestinatarios($id_servicio);
 
+        if ($dto->recipientCount !== null && $dto->recipientCount > $destinatarios->count()) {
+            throw ValidationException::withMessages([
+                'cantidad_destinatarios' => [
+                    'La cantidad solicitada supera los destinatarios disponibles para este servicio.',
+                ],
+            ]);
+        }
+
         if ($destinatarios->isEmpty()) {
             throw new \Exception('No hay destinatarios activos con teléfonos válidos para este servicio', 400);
         }
+
+        if ($dto->recipientCount !== null) {
+            $destinatarios = $destinatarios->take($dto->recipientCount)->values();
+        }
+
+        $totalDestinatarios = $destinatarios->count();
 
         // Subir imagen a Cloudinary
         $imagenUrl = $this->uploadImageToCloudinary($dto->image, 'campanias_whatsapp');
@@ -49,21 +65,44 @@ class WhatsAppCampaignService
             throw new \Exception('Error al subir la imagen a Cloudinary', 500);
         }
 
-        // Crear registro de campaña en BORRADOR con auditoría de usuario
-        $campania = $this->repository->create([
-            'id_servicio' => $id_servicio,
-            'user_id' => $user->id,
-            'parrafo' => $dto->paragraph,
-            'imagen_url' => $imagenUrl,
-            'estado' => 'borrador',
-            'total_destinatarios' => $destinatarios->count(),
-            'envios_pendientes' => $destinatarios->count(),
-        ]);
+        $campania = DB::transaction(function () use (
+            $id_servicio,
+            $user,
+            $dto,
+            $imagenUrl,
+            $destinatarios,
+            $totalDestinatarios
+        ): CampaniaWhatsApp {
+            $campania = $this->repository->create([
+                'id_servicio' => $id_servicio,
+                'user_id' => $user->id,
+                'parrafo' => $dto->paragraph,
+                'imagen_url' => $imagenUrl,
+                'estado' => 'borrador',
+                'total_destinatarios' => $totalDestinatarios,
+                'envios_pendientes' => $totalDestinatarios,
+                'destinatarios_persistidos' => false,
+            ]);
+
+            $campania->destinatarios()->attach($destinatarios->pluck('id_modalservicio')->all());
+
+            $totalPersistido = $campania->destinatarios()->count();
+            if ($totalPersistido !== $totalDestinatarios) {
+                throw new \RuntimeException('No se pudo persistir la selección completa de destinatarios.');
+            }
+
+            $campania->destinatarios_persistidos = true;
+            if (!$campania->save()) {
+                throw new \RuntimeException('No se pudo marcar la selección de destinatarios como persistida.');
+            }
+
+            return $campania;
+        });
 
         Log::info('Campaña WhatsApp creada en borrador', [
             'campania_id' => $campania->id_campania,
             'servicio' => $dto->service,
-            'total_destinatarios' => $destinatarios->count(),
+            'total_destinatarios' => $totalDestinatarios,
             'creado_por_user_id' => $user->id,
             'creado_por_nombre' => $user->name
         ]);
@@ -104,11 +143,22 @@ class WhatsAppCampaignService
             throw new \Exception('La campaña no puede ser iniciada. Estado actual: ' . $campania->estado, 400);
         }
 
-        // Obtener destinatarios pendientes
-        $destinatarios = $this->getDestinatarios($campania->id_servicio);
+        if ($campania->destinatarios_persistidos) {
+            if (!$campania->destinatarios()->exists()) {
+                throw new \RuntimeException(
+                    'Error de integridad: la campaña está marcada con destinatarios persistidos, pero no tiene asociaciones.'
+                );
+            }
+
+            $destinatarios = $campania->getPendingPersistedRecipients();
+            $campania->reconcilePersistedRecipientCounts($destinatarios);
+        } else {
+            // Mantener el comportamiento previo para campañas históricas.
+            $destinatarios = $this->getDestinatarios($campania->id_servicio);
+        }
 
         if ($destinatarios->isEmpty()) {
-            throw new \Exception('No hay destinatarios disponibles para esta campaña', 400);
+            throw new \Exception('No hay destinatarios elegibles pendientes para esta campaña', 400);
         }
 
         // Actualizar estado y fecha de inicio

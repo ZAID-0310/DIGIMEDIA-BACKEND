@@ -69,9 +69,32 @@ class PermisoService
     /**
      * Delete a permission.
      */
-    public function deletePermiso(int $id): void
-    {
-        $permiso = $this->getPermisoById($id);
-        $this->repository->delete($permiso);
+    /**
+ * Delete a permission safely.
+ */
+public function deletePermiso(int $id): bool
+{
+    if ($id <= 0) {
+        throw new \InvalidArgumentException("ID inválido para eliminación: {$id}");
     }
+
+    try {
+        $permiso = Permiso::findOrFail($id);
+        $this->repository->delete($permiso); 
+
+        return true;
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        Log::warning("Intento de eliminar permiso inexistente ID: {$id}");
+        throw new \Exception("El permiso con ID {$id} no existe.");
+        
+    } catch (\Illuminate\Database\QueryException $e) {
+        Log::error("Error de BD al eliminar permiso ID {$id}: " . $e->getMessage());
+        throw new \Exception("Error de integridad en la base de datos al intentar eliminar.");
+        
+    } catch (\Exception $e) {
+        Log::error("Error genérico en PermisoService::deletePermiso: " . $e->getMessage());
+        throw $e;
+    }
+}
 }

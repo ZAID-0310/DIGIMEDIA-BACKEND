@@ -11,9 +11,15 @@ use App\DTOs\Permiso\StorePermisoDTO;
 use App\DTOs\Permiso\UpdatePermisoDTO;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use App\Models\Permiso; 
+use Illuminate\Support\Facades\Log;
+use Exception;
 
 class PermisoController extends Controller
 {
+
+    
+
     public function __construct(
         private PermisoService $permisoService
     ) {}
@@ -130,23 +136,40 @@ class PermisoController extends Controller
     public function destroy($id): JsonResponse
     {
         try {
+            $permiso = Permiso::findOrFail($id);
+            if ($permiso->roles()->exists()) {
+                return response()->json([
+                    'status' => 409, 
+                    'success' => false,
+                    'message' => 'No se puede eliminar este permiso porque está asignado a uno o más roles activos.',
+                    'error_code' => 'PERMISSION_IN_USE'
+                ], 409);
+            }
             $this->permisoService->deletePermiso((int)$id);
 
             return response()->json([
                 'status' => 200,
+                'success' => true,
                 'message' => 'Permiso eliminado correctamente',
             ]);
+
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status' => 404,
-                'error' => 'Permiso no encontrado',
-                'message' => $e->getMessage()
+                'success' => false,
+                'error' => 'Recurso no encontrado',
+                'message' => "El permiso con ID {$id} no existe."
             ], 404);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
+            Log::error("Error fatal al eliminar permiso ID {$id}: " . $e->getMessage(), [
+                'exception' => $e
+            ]);
+
             return response()->json([
                 'status' => 500,
-                'error' => 'Error al eliminar permiso',
-                'message' => $e->getMessage()
+                'success' => false,
+                'error' => 'Error interno del servidor',
+                'message' => config('app.debug') ? $e->getMessage() : 'Ocurrió un error inesperado.'
             ], 500);
         }
     }

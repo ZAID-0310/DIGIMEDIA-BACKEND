@@ -19,6 +19,7 @@ class PermisoResource extends JsonResource
             'nombre'      => $this->nombre,
             'slug'        => $this->slug,
             'descripcion' => $this->descripcion,
+            'is_assigned' => ($this->resource->roles_count ?? 0) > 0,
         ];
     }
 }

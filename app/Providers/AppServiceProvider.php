@@ -19,36 +19,38 @@ class AppServiceProvider extends ServiceProvider
     {
 
         RateLimiter::for('login', function (Request $request) {
-            return [
+            $email = $request->input('email');
+            $normalizedEmail = is_string($email) ? strtolower(trim($email)) : '';
+            $emailKey = $normalizedEmail !== '' ? $normalizedEmail : 'unknown';
+            $emailHash = hash('sha256', $emailKey);
 
-                // Límite por IP: máx 10 intentos/min (protege contra brute force distribuido)
-                Limit::perMinute(10)
-                    ->by('login_ip:' . $request->ip())
-                    ->response(function () {
+            return [
+                Limit::perMinute(5)
+                    ->by('login_ip:'.$request->ip())
+                    ->response(function (Request $request, array $headers) use ($emailHash) {
                         Log::warning('Rate limit alcanzado por IP', [
-                            'ip'    => request()->ip(),
-                            'email' => request()->input('email'),
+                            'ip' => $request->ip(),
+                            'email_hash' => $emailHash,
                         ]);
 
                         return response()->json([
-                            'status'  => 'error',
+                            'status' => 'error',
                             'message' => 'Demasiados intentos. Intenta de nuevo en unos minutos.',
-                        ], 429);
+                        ], 429, $headers);
                     }),
 
-                // Límite por email: máx 5 intentos/min (protege cuentas individuales)
                 Limit::perMinute(5)
-                    ->by('login_email:' . strtolower($request->input('email', 'unknown')))
-                    ->response(function () {
+                    ->by('login_email:'.$emailKey)
+                    ->response(function (Request $request, array $headers) use ($emailHash) {
                         Log::warning('Rate limit alcanzado por email', [
-                            'ip'    => request()->ip(),
-                            'email' => request()->input('email'),
+                            'ip' => $request->ip(),
+                            'email_hash' => $emailHash,
                         ]);
 
                         return response()->json([
-                            'status'  => 'error',
+                            'status' => 'error',
                             'message' => 'Demasiados intentos para esta cuenta. Intenta de nuevo en unos minutos.',
-                        ], 429);
+                        ], 429, $headers);
                     }),
             ];
         });

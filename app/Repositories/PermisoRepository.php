@@ -12,7 +12,7 @@ class PermisoRepository
      */
     public function getAll(): Collection
     {
-        return Permiso::all();
+        return Permiso::withCount('roles')->get();
     }
 
     /**

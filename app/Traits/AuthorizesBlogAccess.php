@@ -17,33 +17,22 @@ trait AuthorizesBlogAccess
             return false;
         }
 
-        $token = $user->currentAccessToken();
-        if (!$token) {
+        $empleado = $user->empleado; 
+    
+        if (!$empleado || !$empleado->rol) {
             return false;
         }
 
-        $userRoles = $token->abilities ?? [];
-        if (empty($userRoles)) {
-            return false;
+        $currentRole = $empleado->rol;
+
+        if ($currentRole->isAdmin()) {
+        return true;
         }
 
-        // Si el usuario tiene rol 'administrador', tiene acceso total
-        if (in_array('administrador', $userRoles, true)) {
-            return true;
-        }
+        $currentRole->loadMissing('permisos');
 
-        // Verificar si alguno de los roles del token posee el permiso 'ver-blogs'
-        $roles = Rol::with('permisos:id_permiso,slug')
-            ->whereIn('nombre', $userRoles)
-            ->get();
-
-        foreach ($roles as $rol) {
-            if ($rol->permisos->contains('slug', 'ver-blogs')) {
-                return true;
-            }
-        }
-
-        return false;
+        return $currentRole->permisos->contains('slug', 'ver-blogs');
+        
     }
 }
 

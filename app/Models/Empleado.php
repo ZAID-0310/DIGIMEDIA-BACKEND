@@ -84,24 +84,34 @@ class Empleado extends Model
         return $this->hasMany(Blog::class, 'id_empleado', 'id_empleado');
     }
 
-    public function getPrivilegeLevel()
+    public function getPrivilegeLevel(): int
     {
-        $rolNombre = strtolower($this->rol->nombre);
 
-        if ($rolNombre === "administrador" && $this->subtipoAdmin) {
-            return $this->subtipoAdmin->hierarchy;
+        if (!$this->relationLoaded('rol')) {
+        $this->load('rol');
         }
 
-        // Caso en que no se asigne un subtipo a administrador
-        if ($rolNombre === "administrador") {
+        if (!$this->rol) {
+        return 0; 
+        }
+
+        if ($this->rol->isAdmin()) {
+            if ($this->subtipoAdmin && isset($this->subtipoAdmin->hierarchy)) {
+                return (int) $this->subtipoAdmin->hierarchy;
+            }
             return 80;
         }
 
-        return match($rolNombre) {
+        $roleNameLower = strtolower(trim($this->rol->nombre));
+
+        return match ($roleNameLower) {
             'ventas' => 30,
             'marketing' => 20,
             default => 0
         };
+        
+
+        
     }
 
     public function scopeActivos($query)

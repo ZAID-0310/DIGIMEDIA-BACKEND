@@ -58,4 +58,20 @@ class User extends Authenticatable
         return $this->hasOne(Empleado::class, 'id_user', 'id');
     }
 
+    public function hasPermission(string $slug): bool
+    {
+        
+        $empleado = $this->empleado; 
+        
+        if (!$empleado || !$empleado->rol) {
+            return false;
+        }
+
+        
+        $empleado->rol->loadMissing('permisos');
+
+        
+        return $empleado->rol->permisos->contains('slug', $slug);
+    }
+
 }

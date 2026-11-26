@@ -17,6 +17,13 @@ class Rol extends Model
         'nombre',
     ];
 
+    const ADMIN_IDS = [1];
+
+    public function isAdmin(): bool
+    {
+        return in_array($this->id_rol, self::ADMIN_IDS);
+    }
+
     public function empleados()
     {
         return $this->hasMany(Empleado::class, 'id_rol', 'id_rol');

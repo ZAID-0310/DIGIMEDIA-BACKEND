@@ -38,7 +38,7 @@ class EmpleadoService
         $currentEmpleado = Empleado::where('id_user', $currentUser->id)->first()
             ?: Empleado::where('id_empleado', $currentUser->id)->first();
             
-        $isAdmin = $currentEmpleado && $currentEmpleado->rol && strtolower($currentEmpleado->rol->nombre) === 'administrador';
+        $isAdmin = $currentEmpleado && $currentEmpleado->rol && $currentEmpleado->rol->isAdmin();
 
         if (!$isAdmin && $empleado->dni) {
             $empleado->dni = $this->formatDni($empleado->dni, false);
@@ -58,7 +58,7 @@ class EmpleadoService
         $currentEmpleado = Empleado::where('id_user', $currentUser->id)->first()
             ?: Empleado::where('id_empleado', $currentUser->id)->first();
             
-        $isAdmin = $currentEmpleado && $currentEmpleado->rol && strtolower($currentEmpleado->rol->nombre) === 'administrador';
+        $isAdmin = $currentEmpleado && $currentEmpleado->rol && $currentEmpleado->rol->isAdmin();
 
         $paginated = $this->repository->getAllPaginated($search, $rol, $sortBy, $sortOrder, $limit);
 

@@ -7,6 +7,7 @@ use App\DTOs\Rol\StoreRolDTO;
 use App\DTOs\Rol\UpdateRolDTO;
 use App\DTOs\Rol\SyncPermisosDTO;
 use App\Models\Rol;
+use App\Models\Permiso;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -61,21 +62,50 @@ class RolService
      * Update an existing role.
      */
     public function updateRol(int $id, UpdateRolDTO $dto): Rol
-    {
-        return DB::transaction(function () use ($id, $dto) {
-            $rol = $this->getRolById($id);
+{
+    return DB::transaction(function () use ($id, $dto) {
+        $rol = $this->getRolById($id);
 
-            $this->repository->update($rol, [
-                'nombre' => $dto->nombre,
-            ]);
-
-            if ($dto->permisos !== null) {
-                $rol->permisos()->sync($dto->permisos);
+        // 1. BLINDAJE DEL NOMBRE (Solo si NO es Admin)
+        if (!$rol->isAdmin()) {
+            
+            // Aseguramos que nombre sea SIEMPRE un string válido
+            $nuevoNombre = is_array($dto->nombre) 
+                ? implode(', ', $dto->nombre) // Si llega array, lo unimos a texto
+                : trim((string) $dto->nombre); // Si llega string, lo limpiamos
+            
+            // Validación extra: no permitir nombres vacíos
+            if ($nuevoNombre === '') {
+                 throw new \InvalidArgumentException('El nombre del rol no puede estar vacío.');
             }
 
-            return $rol->fresh();
-        });
-    }
+            $this->repository->update($rol, [
+                'nombre' => $nuevoNombre,
+            ]);
+        }
+
+        // 2. BLINDAJE DE PERMISOS
+        if ($dto->permisos !== null) {
+            
+            // Aseguramos que permisos sea un array de IDs enteros válidos
+            // Filtramos valores nulos o no numéricos para evitar errores en sync()
+            $cleanPermisos = [];
+            foreach ((array) $dto->permisos as $permisoId) {
+                if (is_numeric($permisoId)) {
+                    $cleanPermisos[] = (int) $permisoId;
+                }
+            }
+
+            // Creamos el DTO seguro
+            $syncDto = new SyncPermisosDTO(['permisos' => $cleanPermisos]);
+            
+            // Llamamos a la lógica protegida
+            $this->syncPermisosDeRol($id, $syncDto);
+        }
+
+        return $rol->fresh();
+    });
+}
 
     /**
      * Delete a role, ensuring no employees are associated.
@@ -108,14 +138,58 @@ class RolService
     /**
      * Sync permissions of a role.
      */
-    public function syncPermisosDeRol(int $id, SyncPermisosDTO $dto): Collection
-    {
-        return DB::transaction(function () use ($id, $dto) {
-            $rol = $this->getRolById($id);
+   public function syncPermisosDeRol(int $id, SyncPermisosDTO $dto): Collection
+{
+    return DB::transaction(function () use ($id, $dto) {
+        $rol = $this->getRolById($id);
 
-            $rol->permisos()->sync($dto->permisos);
+        $rawData = $dto->permisos;
+        
+        if (is_array($rawData) && isset($rawData['permisos']) && is_array($rawData['permisos'])) {
+            $rawData = $rawData['permisos'];
+        }
 
-            return $rol->permisos()->get();
-        });
-    }
+        if (!is_array($rawData)) {
+            $rawData = [];
+        }
+
+        $submittedIds = [];
+        
+        foreach ($rawData as $item) {
+            if (is_numeric($item)) {
+                $submittedIds[] = (int) $item;
+            } elseif (is_object($item) && isset($item->id_permiso)) {
+                $submittedIds[] = (int) $item->id_permiso;
+            } elseif (is_array($item) && count($item) > 0) {
+                $submittedIds[] = (int) reset($item);
+            }
+        }
+        
+        $initialCleanIds = array_unique(array_filter($submittedIds, fn($v) => $v > 0));
+
+        if ($rol->isAdmin()) {
+            $criticalSlugs = [
+                'ver-roles', 'crear-roles', 'editar-roles', 'eliminar-roles',
+                'ver-permisos', 'crear-permisos', 'editar-permisos', 'eliminar-permisos',
+                'ver-empleados', 'crear-empleados', 'editar-empleados', 'eliminar-empleados'
+            ];
+
+            $criticalIds = Permiso::whereIn('slug', $criticalSlugs)
+                ->pluck('id_permiso')
+                ->map(fn($id) => (int) $id)
+                ->toArray();
+
+            $mergedIds = array_merge($initialCleanIds, $criticalIds);
+            $finalIds = array_unique(array_filter($mergedIds, fn($v) => is_int($v) && $v > 0));
+        } else {
+            $finalIds = $initialCleanIds;
+        }
+
+        $rol->permisos()->sync($finalIds);
+
+        return $rol->permisos()
+            ->select('permisos.*')
+            ->get();
+    });
+}
 }

@@ -4,7 +4,6 @@ namespace App\Services\Auth;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class BackoffService
 {
@@ -15,18 +14,22 @@ class BackoffService
         $attemptsKey = $this->getAttemptsKey($email);
         $backoffKey = $this->getBackoffKey($email);
 
-        $attempts = Cache::has($attemptsKey) ? Cache::increment($attemptsKey) : 1;
-        Cache::put($attemptsKey, $attempts, now()->addMinutes(self::ATTEMPTS_TTL_MINUTES));
+        $attempts = Cache::lock($this->getLockKey($email), 10)->block(5, function () use ($attemptsKey, $backoffKey): int {
+            $attempts = Cache::has($attemptsKey) ? Cache::increment($attemptsKey) : 1;
+            Cache::put($attemptsKey, $attempts, now()->addMinutes(self::ATTEMPTS_TTL_MINUTES));
 
-        $lockoutMinutes = $this->getLockoutMinutes($attempts);
+            $lockoutMinutes = $this->getLockoutMinutes($attempts);
 
-        if ($lockoutMinutes > 0) {
-            $backoffExpiry = now()->addMinutes($lockoutMinutes);
-            Cache::put($backoffKey, $backoffExpiry->timestamp, $backoffExpiry);
-        }
+            if ($lockoutMinutes > 0) {
+                $backoffExpiry = now()->addMinutes($lockoutMinutes);
+                Cache::put($backoffKey, $backoffExpiry->timestamp, $backoffExpiry);
+            }
+
+            return $attempts;
+        });
 
         Log::info('Login fallido', [
-            'email' => $email,
+            'email_hash' => hash('sha256', strtolower(trim($email))),
             'ip' => $ip,
             'reason' => $reason,
             'attempts' => $attempts,
@@ -41,30 +44,36 @@ class BackoffService
     public function getRemainingWaitSeconds(string $email): int
     {
         $backoffKey = $this->getBackoffKey($email);
-        $rawExpiry = Cache::get($backoffKey);
 
-        if (!$rawExpiry) {
-            return 0;
-        }
+        return Cache::lock($this->getLockKey($email), 10)->block(5, function () use ($backoffKey): int {
+            $rawExpiry = Cache::get($backoffKey);
 
-        $expiryTimestamp = $rawExpiry instanceof \DateTimeInterface
-            ? $rawExpiry->getTimestamp()
-            : (int) $rawExpiry;
+            if (! $rawExpiry) {
+                return 0;
+            }
 
-        $waitSeconds = $expiryTimestamp - now()->timestamp;
+            $expiryTimestamp = $rawExpiry instanceof \DateTimeInterface
+                ? $rawExpiry->getTimestamp()
+                : (int) $rawExpiry;
 
-        if ($waitSeconds <= 0) {
-            Cache::forget($backoffKey);
-            return 0;
-        }
+            $waitSeconds = $expiryTimestamp - now()->timestamp;
 
-        return $waitSeconds;
+            if ($waitSeconds <= 0) {
+                Cache::forget($backoffKey);
+
+                return 0;
+            }
+
+            return $waitSeconds;
+        });
     }
 
     public function reset(string $email): void
     {
-        Cache::forget($this->getBackoffKey($email));
-        Cache::forget($this->getAttemptsKey($email));
+        Cache::lock($this->getLockKey($email), 10)->block(5, function () use ($email): void {
+            Cache::forget($this->getBackoffKey($email));
+            Cache::forget($this->getAttemptsKey($email));
+        });
     }
 
     private function getLockoutMinutes(int $attempts): int
@@ -80,11 +89,16 @@ class BackoffService
 
     private function getAttemptsKey(string $email): string
     {
-        return 'login_attempts:' . strtolower($email);
+        return 'login_attempts:'.strtolower(trim($email));
     }
 
     private function getBackoffKey(string $email): string
     {
-        return 'login_backoff:' . strtolower($email);
+        return 'login_backoff:'.strtolower(trim($email));
+    }
+
+    private function getLockKey(string $email): string
+    {
+        return $this->getAttemptsKey($email).':lock';
     }
 }
